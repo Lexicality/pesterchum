@@ -22,6 +22,10 @@ Features
 * Unified data storage, OS-based user data location
 * Spectation notices (Idea: lexicalNuance) (probly WONTFIX)
 * "Pester" menu option to just pester a handle
+* Auto-login Nickserv
+* Make toast notifications only on certain chums
+* Local alisas for chums
+* Italics/uderline - needed for canon
 
 Bugs
 ----
@@ -29,7 +33,6 @@ Bugs
 * Windows doesn't show style sheet sometimes?? Maybe related to themes.
 * Issues with connecting? Client not closing connection right? People keep getting "nick taken" messages
 * When using mood sort, scroll position jumps to last selected chum
-* When left for a really long time, animations slow down pesterchum
 * Closing a timeclone doesn't actually cease for everyone else
 * Kill Zalgo
 * Random invisible, tiny links to last link at end of every message

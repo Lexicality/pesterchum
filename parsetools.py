@@ -425,6 +425,10 @@ smiledict = {
     ":vigorous:": "vigorous.png",
     ":perky:": "perky.png",
     ":acceptant:": "acceptant.png",
+    ":olliesouty:": "olliesouty.gif",
+    ":billiards:": "poolballS.gif",
+    ":billiardslarge:": "poolballL.gif",
+    ":whatdidyoudo:": "whatdidyoudo.gif",    
     }
 
 if ostools.isOSXBundle():

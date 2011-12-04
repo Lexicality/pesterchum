@@ -54,7 +54,14 @@ class PesterLog(object):
             for (format, t) in modes.iteritems():
                 if not os.path.exists("%s/%s/%s/%s" % (self.logpath, self.handle, handle, format)):
                     os.makedirs("%s/%s/%s/%s" % (self.logpath, self.handle, handle, format))
-                fp = codecs.open("%s/%s/%s/%s/%s.%s.txt" % (self.logpath, self.handle, handle, format, handle, time), encoding='utf-8', mode='a')
+                try:
+                    fp = codecs.open("%s/%s/%s/%s/%s.%s.txt" % (self.logpath, self.handle, handle, format, handle, time), encoding='utf-8', mode='a')
+                except IOError:
+                    errmsg = QtGui.QMessageBox(self)
+                    errmsg.setText("Warning: Pesterchum could not open the log file for %s!" % (handle))
+                    errmsg.setInformativeText("Your log for %s will not be saved because something went wrong. We suggest restarting Pesterchum. Sorry :(" % (handle))
+                    errmsg.show()
+                    continue
                 self.convos[handle][format] = fp
         for (format, t) in modes.iteritems():
             f = self.convos[handle][format]
@@ -121,6 +128,16 @@ class userConfig(object):
         if not self.config.has_key('chums'):
             self.set("chums", [])
         return self.config.get('chums', [])
+    def setChums(self, newchums):
+        fp = open(self.filename) # what if we have two clients open??
+        newconfig = json.load(fp)
+        fp.close()
+        oldchums = newconfig['chums']
+        # Time to merge these two! :OOO
+        for c in list(set(oldchums) - set(newchums)):
+            newchums.append(c)
+
+        self.set("chums", newchums)
     def hideOfflineChums(self):
         return self.config.get('hideOfflineChums', False)
     def defaultprofile(self):
@@ -130,6 +147,10 @@ class userConfig(object):
             return None
     def tabs(self):
         return self.config.get("tabs", True)
+    def tabMemos(self):
+        if not self.config.has_key('tabmemos'):
+            self.set("tabmemos", self.tabs())
+        return self.config.get("tabmemos", True)
     def showTimeStamps(self):
         if not self.config.has_key('showTimeStamps'):
             self.set("showTimeStamps", True)
@@ -307,8 +328,8 @@ class userConfig(object):
         for dirname, dirnames, filenames in os.walk(_datadir+'themes'):
             for d in dirnames:
                 themes.append(d)
-        # For OSX, also load embedded themes.
-        if ostools.isOSX():
+        # Also load embedded themes.
+        if _datadir:
             for dirname, dirnames, filenames in os.walk('themes'):
                 for d in dirnames:
                     if d not in themes:
@@ -426,7 +447,7 @@ class userProfile(object):
         fp.close()
     @staticmethod
     def newUserProfile(chatprofile):
-        if os.path.exists("profiles/%s.js" % (chatprofile.handle)):
+        if os.path.exists("%s/%s.js" % (_datadir+"profiles", chatprofile.handle)):
             newprofile = userProfile(chatprofile.handle)
         else:
             newprofile = userProfile(chatprofile)
@@ -515,11 +536,15 @@ class PesterProfileDB(dict):
 
 class pesterTheme(dict):
     def __init__(self, name, default=False):
-        self.path = _datadir+"themes/%s" % (name)
-        if not os.path.exists(self.path):
-            self.path = "themes/%s" % (name)
-        if not os.path.exists(self.path):
-            self.path = "themes/pesterchum"
+        possiblepaths = (_datadir+"themes/%s" % (name),
+                         "themes/%s" % (name),
+                         _datadir+"themes/pesterchum",
+                         "themes/pesterchum")
+        self.path = "themes/pesterchum"
+        for p in possiblepaths:
+            if os.path.exists(p):
+                self.path = p
+                break
 
         self.name = name
         try:

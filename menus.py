@@ -7,6 +7,8 @@ from dataobjs import pesterQuirk, PesterProfile
 from memos import TimeSlider, TimeInput
 from version import _pcVersion
 
+_datadir = ostools.getDataDir()
+
 class PesterQuirkItem(QtGui.QTreeWidgetItem):
     def __init__(self, quirk):
         parent = None
@@ -213,7 +215,7 @@ from dataobjs import pesterQuirks, PesterHistory
 class QuirkTesterWindow(QtGui.QDialog):
     def __init__(self, parent):
         QtGui.QDialog.__init__(self, parent)
-        self.parent = parent
+        self.prnt = parent
         self.mainwindow = parent.mainwindow
         self.setStyleSheet(self.mainwindow.theme["main/defaultwindow/style"])
         self.setWindowTitle("Quirk Tester")
@@ -235,6 +237,9 @@ class QuirkTesterWindow(QtGui.QDialog):
         layout_0.addWidget(self.textInput)
         self.setLayout(layout_0)
 
+    def parent(self):
+        return self.prnt
+
     def clearNewMessage(self):
         pass
     @QtCore.pyqtSlot()
@@ -243,7 +248,7 @@ class QuirkTesterWindow(QtGui.QDialog):
         if text == "" or text[0:11] == "PESTERCHUM:":
             return
         self.history.add(text)
-        quirks = pesterQuirks(self.parent.testquirks())
+        quirks = pesterQuirks(self.parent().testquirks())
         lexmsg = lexMessage(text)
         if type(lexmsg[0]) is not mecmd:
             try:
@@ -274,7 +279,7 @@ class QuirkTesterWindow(QtGui.QDialog):
         self.textArea.addMessage(lexmsg, chum)
 
     def closeEvent(self, event):
-        self.parent.quirktester = None
+        self.parent().quirktester = None
 
 class PesterQuirkTypes(QtGui.QDialog):
     def __init__(self, parent, quirk=None):
@@ -887,7 +892,7 @@ class PesterChooseProfile(QtGui.QDialog):
             ret = msgbox.exec_()
             if ret == QtGui.QMessageBox.Ok:
                 try:
-                    remove("profiles/%s.js" % (handle))
+                    remove(_datadir+"profiles/%s.js" % (handle))
                 except OSError:
                     problem = QtGui.QMessageBox()
                     problem.setStyleSheet(self.theme["main/defaultwindow/style"])
@@ -1018,6 +1023,9 @@ class PesterOptions(QtGui.QDialog):
         self.tabcheck = QtGui.QCheckBox("Tabbed Conversations", self)
         if self.config.tabs():
             self.tabcheck.setChecked(True)
+        self.tabmemocheck = QtGui.QCheckBox("Tabbed Memos", self)
+        if self.config.tabMemos():
+            self.tabmemocheck.setChecked(True)
         self.hideOffline = QtGui.QCheckBox("Hide Offline Chums", self)
         if self.config.hideOfflineChums():
             self.hideOffline.setChecked(True)
@@ -1106,6 +1114,7 @@ class PesterOptions(QtGui.QDialog):
         self.sortBox = QtGui.QComboBox(self)
         self.sortBox.addItem("Alphabetically")
         self.sortBox.addItem("By Mood")
+        self.sortBox.addItem("Manually")
         method = self.config.sortMethod()
         if method >= 0 and method < self.sortBox.count():
             self.sortBox.setCurrentIndex(method)
@@ -1162,6 +1171,9 @@ class PesterOptions(QtGui.QDialog):
             self.themeBox.addItem(t)
             if (not notheme and t == theme.name) or (notheme and t == "pesterchum"):
                 self.themeBox.setCurrentIndex(i)
+        self.refreshtheme = QtGui.QPushButton("Refresh current theme", self)
+        self.connect(self.refreshtheme, QtCore.SIGNAL('clicked()'),
+                     parent, QtCore.SLOT('themeSelectOverride()'))
 
         self.buttonOptions = ["Minimize to Taskbar", "Minimize to Tray", "Quit"]
         self.miniBox = QtGui.QComboBox(self)
@@ -1272,6 +1284,7 @@ class PesterOptions(QtGui.QDialog):
         layout_interface = QtGui.QVBoxLayout(widget)
         layout_interface.setAlignment(QtCore.Qt.AlignTop)
         layout_interface.addWidget(self.tabcheck)
+        layout_interface.addWidget(self.tabmemocheck)
         layout_interface.addLayout(layout_mini)
         layout_interface.addLayout(layout_close)
         layout_interface.addWidget(self.pesterBlink)
@@ -1336,7 +1349,8 @@ class PesterOptions(QtGui.QDialog):
         layout_idle.setAlignment(QtCore.Qt.AlignTop)
         layout_idle.addLayout(layout_5)
         layout_idle.addLayout(layout_6)
-        layout_idle.addWidget(self.mspaCheck)
+        if not ostools.isOSXLeopard():
+            layout_idle.addWidget(self.mspaCheck)
         self.pages.addWidget(widget)
 
         # Theme
@@ -1345,6 +1359,7 @@ class PesterOptions(QtGui.QDialog):
         layout_theme.setAlignment(QtCore.Qt.AlignTop)
         layout_theme.addWidget(QtGui.QLabel("Pick a Theme:"))
         layout_theme.addWidget(self.themeBox)
+        layout_theme.addWidget(self.refreshtheme)
         self.pages.addWidget(widget)
 
         # Advanced
@@ -1722,7 +1737,49 @@ class UpdatePesterchum(QtGui.QDialog):
         layout_0 = QtGui.QVBoxLayout()
         layout_0.addWidget(self.title)
 
-        self.ok = QtGui.QPushButton("D0WNL04D 4ND 1N5T4LL N0W", self)
+        self.ok = QtGui.QPushButton("D0WNL04D 4ND 1NST4LL N0W", self)
+        self.ok.setDefault(True)
+        self.connect(self.ok, QtCore.SIGNAL('clicked()'),
+                     self, QtCore.SLOT('accept()'))
+        self.cancel = QtGui.QPushButton("CANCEL", self)
+        self.connect(self.cancel, QtCore.SIGNAL('clicked()'),
+                     self, QtCore.SLOT('reject()'))
+        layout_2 = QtGui.QHBoxLayout()
+        layout_2.addWidget(self.cancel)
+        layout_2.addWidget(self.ok)
+
+        layout_0.addLayout(layout_2)
+
+        self.setLayout(layout_0)
+
+class AddChumDialog(QtGui.QDialog):
+    def __init__(self, avail_groups, parent=None):
+        QtGui.QDialog.__init__(self, parent)
+
+        self.mainwindow = parent
+        self.setStyleSheet(self.mainwindow.theme["main/defaultwindow/style"])
+        self.setWindowTitle("Enter Chum Handle")
+        self.setModal(True)
+
+        self.title = QtGui.QLabel("Enter Chum Handle")
+        self.chumBox = QtGui.QLineEdit(self)
+        self.groupBox = QtGui.QComboBox(self)
+        avail_groups.sort()
+        avail_groups.pop(avail_groups.index("Chums"))
+        avail_groups.insert(0, "Chums")
+        for g in avail_groups:
+            self.groupBox.addItem(g)
+        self.newgrouplabel = QtGui.QLabel("Or make a new group:")
+        self.newgroup = QtGui.QLineEdit(self)
+
+        layout_0 = QtGui.QVBoxLayout()
+        layout_0.addWidget(self.title)
+        layout_0.addWidget(self.chumBox)
+        layout_0.addWidget(self.groupBox)
+        layout_0.addWidget(self.newgrouplabel)
+        layout_0.addWidget(self.newgroup)
+
+        self.ok = QtGui.QPushButton("OK", self)
         self.ok.setDefault(True)
         self.connect(self.ok, QtCore.SIGNAL('clicked()'),
                      self, QtCore.SLOT('accept()'))

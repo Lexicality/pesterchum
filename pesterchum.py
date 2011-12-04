@@ -1,8 +1,10 @@
 # pesterchum
+import os, shutil, sys, getopt
+if os.path.dirname(sys.argv[0]):
+    os.chdir(os.path.dirname(sys.argv[0]))
 import version
 version.pcVerCalc()
 import logging
-import os, sys, getopt
 from datetime import *
 import random
 import re
@@ -45,8 +47,21 @@ if not ((major > 4) or (major == 4 and minor >= 6)):
 _datadir = ostools.getDataDir()
 # See, what I've done here is that _datadir is '' if we're not on OSX, so the
 #  concatination is the same as if it wasn't there.
-if _datadir and not os.path.exists(_datadir):
-    os.mkdir(_datadir)
+# UPDATE 2011-11-28 <Kiooeht>:
+#   Now using data directory as defined by QDesktopServices on all platforms
+#   (on Linux, same as using xdg). To stay safe with older versions, copy any
+#   data (profiles, logs, etc) from old location to new data directory.
+
+if _datadir:
+    if not os.path.exists(_datadir):
+        os.makedirs(_datadir)
+    if not os.path.exists(_datadir+"profiles/") and os.path.exists("profiles/"):
+        shutil.move("profiles/", _datadir+"profiles/")
+    if not os.path.exists(_datadir+"pesterchum.js") and os.path.exists("pesterchum.js"):
+        shutil.move("pesterchum.js", _datadir+"pesterchum.js")
+    if not os.path.exists(_datadir+"logs/") and os.path.exists("logs/"):
+        shutil.move("logs/", _datadir+"logs/")
+
 if not os.path.exists(_datadir+"profiles"):
     os.mkdir(_datadir+"profiles")
 if not os.path.exists(_datadir+"pesterchum.js"):
@@ -58,7 +73,7 @@ if not os.path.exists(_datadir+"logs"):
 
 from menus import PesterChooseQuirks, PesterChooseTheme, \
     PesterChooseProfile, PesterOptions, PesterUserlist, PesterMemoList, \
-    LoadingScreen, AboutPesterchum, UpdatePesterchum
+    LoadingScreen, AboutPesterchum, UpdatePesterchum, AddChumDialog
 from mood import Mood, PesterMoodAction, PesterMoodHandler, PesterMoodButton
 from dataobjs import PesterProfile, pesterQuirk, pesterQuirks
 from generic import PesterIcon, RightClickList, RightClickTree, \
@@ -197,7 +212,7 @@ class chumArea(RightClickTree):
     def __init__(self, chums, parent=None):
         QtGui.QTreeWidget.__init__(self, parent)
         self.notify = False
-        QtCore.QTimer.singleShot(5000, self, QtCore.SLOT('beginNotify()'))
+        QtCore.QTimer.singleShot(30000, self, QtCore.SLOT('beginNotify()'))
         self.mainwindow = parent
         theme = self.mainwindow.theme
         self.chums = chums
@@ -282,6 +297,8 @@ class chumArea(RightClickTree):
         self.notify = True
 
     def getOptionsMenu(self):
+        if not self.currentItem():
+            return None
         text = str(self.currentItem().text(0))
         if text.rfind(" (") != -1:
             text = text[0:text.rfind(" (")]
@@ -325,8 +342,9 @@ class chumArea(RightClickTree):
             event.ignore()
             return
         thisitem = str(event.source().currentItem().text(0))
-        if thisitem.rfind(" ") != -1:
-            thisitem = thisitem[0:thisitem.rfind(" ")]
+        if thisitem.rfind(" (") != -1:
+            thisitem = thisitem[0:thisitem.rfind(" (")]
+        # Drop item is a group
         if thisitem == "Chums" or thisitem in self.groups:
             droppos = self.itemAt(event.pos())
             if not droppos: return
@@ -348,24 +366,46 @@ class chumArea(RightClickTree):
                         text = text[0:text.rfind(" (")]
                     gTemp.append([unicode(text), self.topLevelItem(i).isExpanded()])
                 self.mainwindow.config.saveGroups(gTemp)
+        # Drop item is a chum
         else:
             item = self.itemAt(event.pos())
             if item:
                 text = str(item.text(0))
+                # Figure out which group to drop into
                 if text.rfind(" (") != -1:
                     text = text[0:text.rfind(" (")]
                 if text == "Chums" or text in self.groups:
                     group = text
+                    gitem = item
                 else:
                     ptext = str(item.parent().text(0))
                     if ptext.rfind(" ") != -1:
                         ptext = ptext[0:ptext.rfind(" ")]
                     group = ptext
+                    gitem = item.parent()
+
                 chumLabel = event.source().currentItem()
                 chumLabel.chum.group = group
                 self.mainwindow.chumdb.setGroup(chumLabel.chum.handle, group)
                 self.takeItem(chumLabel)
-                self.addItem(chumLabel)
+                # Using manual chum reordering
+                if self.mainwindow.config.sortMethod() == 2:
+                    insertIndex = gitem.indexOfChild(item)
+                    if insertIndex == -1:
+                        insertIndex = 0
+                    gitem.insertChild(insertIndex, chumLabel)
+                    chums = self.mainwindow.config.chums()
+                    if item == gitem:
+                        item = gitem.child(0)
+                    inPos = chums.index(str(item.text(0)))
+                    if chums.index(thisitem) < inPos:
+                        inPos -= 1
+                    chums.remove(thisitem)
+                    chums.insert(inPos, unicode(thisitem))
+
+                    self.mainwindow.config.setChums(chums)
+                else:
+                    self.addItem(chumLabel)
                 if self.mainwindow.config.showOnlineNumbers():
                     self.showOnlineNumbers()
 
@@ -534,7 +574,33 @@ class chumArea(RightClickTree):
                         text = text[0:text.rfind(" (")]
                     if text == chumLabel.chum.group:
                         break
-                self.topLevelItem(i).addChild(chumLabel)
+                # Manual sorting
+                if self.mainwindow.config.sortMethod() == 2:
+                    chums = self.mainwindow.config.chums()
+                    fi = chums.index(chumLabel.chum.handle)
+                    c = 1
+
+                    # TODO: Rearrange chums list on drag-n-drop
+                    bestj = 0
+                    bestname = ""
+                    if fi > 0:
+                        while not bestj:
+                            for j in xrange(self.topLevelItem(i).childCount()):
+                                if chums[fi-c] == str(self.topLevelItem(i).child(j).text(0)):
+                                    bestj = j
+                                    bestname = chums[fi-c]
+                                    break
+                            c += 1
+                            if fi-c < 0:
+                                break
+                    if bestname:
+                        self.topLevelItem(i).insertChild(bestj+1, chumLabel)
+                    else:
+                        self.topLevelItem(i).insertChild(bestj, chumLabel)
+                    #sys.exit(0)
+                    self.topLevelItem(i).addChild(chumLabel)
+                else: # All other sorting
+                    self.topLevelItem(i).addChild(chumLabel)
                 self.sort()
                 if self.mainwindow.config.showOnlineNumbers():
                     self.showOnlineNumbers()
@@ -624,7 +690,9 @@ class chumArea(RightClickTree):
         return c
 
     def sort(self):
-        if self.mainwindow.config.sortMethod() == 1:
+        if self.mainwindow.config.sortMethod() == 2:
+            pass # Do nothing!!!!! :OOOOOOO It's manual, bitches
+        elif self.mainwindow.config.sortMethod() == 1:
             for i in range(self.topLevelItemCount()):
                 self.moodSort(i)
         else:
@@ -886,6 +954,7 @@ class TrollSlumWindow(QtGui.QFrame):
                 errormsg.showMessage("THIS IS NOT A VALID CHUMTAG!")
                 self.addchumdialog = None
                 return
+
             self.blockChumSignal.emit(handle)
         self.addtrolldialog = None
 
@@ -1122,7 +1191,7 @@ class PesterWindow(MovingWindow):
         self.connect(self.pingtimer, QtCore.SIGNAL('timeout()'),
                 self, QtCore.SLOT('checkPing()'))
         self.lastping = int(time())
-        self.pingtimer.start(1000*10)
+        self.pingtimer.start(1000*90)
 
     @QtCore.pyqtSlot()
     def mspacheck(self):
@@ -1346,7 +1415,7 @@ class PesterWindow(MovingWindow):
             self.memos[channel].showChat()
             return
         # do slider dialog then set
-        if self.config.tabs():
+        if self.config.tabMemos():
             if not self.tabmemo:
                 self.createMemoTabWindow()
             memoWindow = PesterMemo(channel, timestr, self, self.tabmemo)
@@ -1383,6 +1452,19 @@ class PesterWindow(MovingWindow):
         self.chumList.addChum(chum)
         self.config.addChum(chum)
         self.moodRequest.emit(chum)
+
+    def addGroup(self, gname):
+        self.config.addGroup(gname)
+        gTemp = self.config.getGroups()
+        self.chumList.groups = [g[0] for g in gTemp]
+        self.chumList.openGroups = [g[1] for g in gTemp]
+        self.chumList.moveGroupMenu()
+        self.chumList.showAllGroups()
+        if not self.config.showEmptyGroups():
+            self.chumList.hideEmptyGroups()
+        if self.config.showOnlineNumbers():
+            self.chumList.showOnlineNumbers()
+
 
     def changeProfile(self, collision=None):
         if not hasattr(self, 'chooseprofile'):
@@ -1621,8 +1703,14 @@ class PesterWindow(MovingWindow):
     @QtCore.pyqtSlot(QtCore.QString)
     def closeConvo(self, handle):
         h = unicode(handle)
-        chum = self.convos[h].chum
-        chumopen = self.convos[h].chumopen
+        try:
+            chum = self.convos[h].chum
+        except KeyError:
+            chum = self.convos[h.lower()].chum
+        try:
+            chumopen = self.convos[h].chumopen
+        except KeyError:
+            chumopen = self.convos[h.lower()].chumopen
         if chumopen:
             self.chatlog.log(chum.handle, self.profile().pestermsg(chum, QtGui.QColor(self.theme["convo/systemMsgColor"]), self.theme["convo/text/ceasepester"]))
             self.convoClosed.emit(handle)
@@ -1633,7 +1721,10 @@ class PesterWindow(MovingWindow):
         c = unicode(channel)
         self.chatlog.finish(c)
         self.leftChannel.emit(channel)
-        del self.memos[c]
+        try:
+            del self.memos[c]
+        except KeyError:
+            del self.memos[c.lower()]
     @QtCore.pyqtSlot()
     def tabsClosed(self):
         del self.tabconvo
@@ -1766,17 +1857,33 @@ class PesterWindow(MovingWindow):
         if not hasattr(self, 'addchumdialog'):
             self.addchumdialog = None
         if not self.addchumdialog:
-            self.addchumdialog = QtGui.QInputDialog(self)
-            (handle, ok) = self.addchumdialog.getText(self, "New Chum", "Enter Chum Handle:")
+            available_groups = [g[0] for g in self.config.getGroups()]
+            self.addchumdialog = AddChumDialog(available_groups, self)
+            ok = self.addchumdialog.exec_()
+            handle = str(self.addchumdialog.chumBox.text()).strip()
+            newgroup = str(self.addchumdialog.newgroup.text()).strip()
+            selectedGroup = self.addchumdialog.groupBox.currentText()
+            group = newgroup if newgroup else selectedGroup
             if ok:
                 handle = unicode(handle)
+                if handle in [h.handle for h in self.chumList.chums]:
+                    return
                 if not (PesterProfile.checkLength(handle) and
                         PesterProfile.checkValid(handle)[0]):
                     errormsg = QtGui.QErrorMessage(self)
                     errormsg.showMessage("THIS IS NOT A VALID CHUMTAG!")
                     self.addchumdialog = None
                     return
-                chum = PesterProfile(handle, chumdb=self.chumdb)
+                if re.search("[^A-Za-z0-9_\s]", group) is not None:
+                    errormsg = QtGui.QErrorMessage(self)
+                    errormsg.showMessage("THIS IS NOT A VALID CHUMTAG!")
+                    self.addchumdialog = None
+                    return
+                if newgroup:
+                    # make new group
+                    self.addGroup(group)
+                chum = PesterProfile(handle, chumdb=self.chumdb, group=group)
+                self.chumdb.setGroup(handle, group)
                 self.addChum(chum)
             self.addchumdialog = None
     @QtCore.pyqtSlot(QtCore.QString)
@@ -2028,17 +2135,7 @@ class PesterWindow(MovingWindow):
                     ret = msgbox.exec_()
                     self.addgroupdialog = None
                     return
-                self.config.addGroup(gname)
-                gTemp = self.config.getGroups()
-                self.chumList.groups = [g[0] for g in gTemp]
-                self.chumList.openGroups = [g[1] for g in gTemp]
-                self.chumList.moveGroupMenu()
-                self.chumList.showAllGroups()
-                if not self.config.showEmptyGroups():
-                    self.chumList.hideEmptyGroups()
-                if self.config.showOnlineNumbers():
-                    self.chumList.showOnlineNumbers()
-
+                self.addGroup(gname)
             self.addgroupdialog = None
 
     @QtCore.pyqtSlot()
@@ -2069,8 +2166,6 @@ class PesterWindow(MovingWindow):
                 windows = []
                 if self.tabconvo:
                     windows = list(self.tabconvo.convos.values())
-                if self.tabmemo:
-                    windows += list(self.tabmemo.convos.values())
 
                 for w in windows:
                     w.setParent(None)
@@ -2078,8 +2173,6 @@ class PesterWindow(MovingWindow):
                     w.raiseChat()
                 if self.tabconvo:
                     self.tabconvo.closeSoft()
-                if self.tabmemo:
-                    self.tabmemo.closeSoft()
                 # save options
                 self.config.set("tabs", tabsetting)
             elif tabsetting and not curtab:
@@ -2092,6 +2185,28 @@ class PesterWindow(MovingWindow):
                     self.tabconvo.show()
                     newconvos[h] = c
                 self.convos = newconvos
+                # save options
+                self.config.set("tabs", tabsetting)
+
+            # tabs memos
+            curtabmemo = self.config.tabMemos()
+            tabmemosetting = self.optionmenu.tabmemocheck.isChecked()
+            if curtabmemo and not tabmemosetting:
+                # split tabs into windows
+                windows = []
+                if self.tabmemo:
+                    windows = list(self.tabmemo.convos.values())
+
+                for w in windows:
+                    w.setParent(None)
+                    w.show()
+                    w.raiseChat()
+                if self.tabmemo:
+                    self.tabmemo.closeSoft()
+                # save options
+                self.config.set("tabmemos", tabmemosetting)
+            elif tabmemosetting and not curtabmemo:
+                # combine
                 newmemos = {}
                 self.createMemoTabWindow()
                 for (h,m) in self.memos.iteritems():
@@ -2101,7 +2216,7 @@ class PesterWindow(MovingWindow):
                     newmemos[h] = m
                 self.memos = newmemos
                 # save options
-                self.config.set("tabs", tabsetting)
+                self.config.set("tabmemos", tabmemosetting)
             # hidden chums
             chumsetting = self.optionmenu.hideOffline.isChecked()
             curchum = self.config.hideOfflineChums()
@@ -2307,9 +2422,16 @@ class PesterWindow(MovingWindow):
                           self, QtCore.SLOT('close()'));
 
     @QtCore.pyqtSlot()
-    def themeSelected(self):
-        themename = unicode(self.optionmenu.themeBox.currentText())
-        if themename != self.theme.name:
+    def themeSelectOverride(self):
+        self.themeSelected(self.theme.name)
+
+    @QtCore.pyqtSlot()
+    def themeSelected(self, override=False):
+        if not override:
+            themename = unicode(self.optionmenu.themeBox.currentText())
+        else:
+            themename = override
+        if override or themename != self.theme.name:
             try:
                 self.changeTheme(pesterTheme(themename))
             except ValueError, e:
