@@ -8,26 +8,29 @@ import logging
 from datetime import *
 import random
 import re
-import ostools
 from time import time
 import threading, Queue
 
-missing = []
+reqmissing = []
+optmissing = []
 try:
     from PyQt4 import QtGui, QtCore
 except ImportError, e:
     module = str(e)
-    if module[:16] == "No module named ": missing.append(module[16:])
+    if module.startswith("No module named ") or \
+       module.startswith("cannot import name "):
+        reqmissing.append(module[module.rfind(" ")+1:])
     else: print e
 try:
     import pygame
 except ImportError, e:
+    pygame = None
     module = str(e)
-    if module[:16] == "No module named ": missing.append(module[16:])
+    if module[:16] == "No module named ": optmissing.append(module[16:])
     else: print e
-if missing:
+if reqmissing:
     print "ERROR: The following modules are required for Pesterchum to run and are missing on your system:"
-    for m in missing: print "* "+m
+    for m in reqmissing: print "* "+m
     exit()
 vnum = QtCore.qVersion()
 major = int(vnum[:vnum.find(".")])
@@ -40,6 +43,7 @@ if not ((major > 4) or (major == 4 and minor >= 6)):
     print "You currently have version " + vnum + ". Please ungrade Qt"
     exit()
 
+import ostools
 # Placed here before importing the rest of pesterchum, since bits of it need
 #  OSX's data directory and it doesn't hurt to have everything set up before
 #  plowing on. :o)
@@ -299,7 +303,7 @@ class chumArea(RightClickTree):
     def getOptionsMenu(self):
         if not self.currentItem():
             return None
-        text = str(self.currentItem().text(0))
+        text = unicode(self.currentItem().text(0))
         if text.rfind(" (") != -1:
             text = text[0:text.rfind(" (")]
         if text == "Chums":
@@ -345,10 +349,13 @@ class chumArea(RightClickTree):
         if thisitem.rfind(" (") != -1:
             thisitem = thisitem[0:thisitem.rfind(" (")]
         # Drop item is a group
+        thisitem = unicode(event.source().currentItem().text(0))
+        if thisitem.rfind(" (") != -1:
+            thisitem = thisitem[0:thisitem.rfind(" (")]
         if thisitem == "Chums" or thisitem in self.groups:
             droppos = self.itemAt(event.pos())
             if not droppos: return
-            droppos = str(droppos.text(0))
+            droppos = unicode(droppos.text(0))
             if droppos.rfind(" ") != -1:
                 droppos = droppos[0:droppos.rfind(" ")]
             if droppos == "Chums" or droppos in self.groups:
@@ -361,7 +368,7 @@ class chumArea(RightClickTree):
 
                 gTemp = []
                 for i in range(self.topLevelItemCount()):
-                    text = str(self.topLevelItem(i).text(0))
+                    text = unicode(self.topLevelItem(i).text(0))
                     if text.rfind(" (") != -1:
                         text = text[0:text.rfind(" (")]
                     gTemp.append([unicode(text), self.topLevelItem(i).isExpanded()])
@@ -370,7 +377,7 @@ class chumArea(RightClickTree):
         else:
             item = self.itemAt(event.pos())
             if item:
-                text = str(item.text(0))
+                text = unicode(item.text(0))
                 # Figure out which group to drop into
                 if text.rfind(" (") != -1:
                     text = text[0:text.rfind(" (")]
@@ -378,7 +385,7 @@ class chumArea(RightClickTree):
                     group = text
                     gitem = item
                 else:
-                    ptext = str(item.parent().text(0))
+                    ptext = unicode(item.parent().text(0))
                     if ptext.rfind(" ") != -1:
                         ptext = ptext[0:ptext.rfind(" ")]
                     group = ptext
@@ -413,9 +420,9 @@ class chumArea(RightClickTree):
         currentGroup = self.currentItem()
         if currentGroup:
             if currentGroup.parent():
-                text = str(currentGroup.parent().text(0))
+                text = unicode(currentGroup.parent().text(0))
             else:
-                text = str(currentGroup.text(0))
+                text = unicode(currentGroup.text(0))
             if text.rfind(" (") != -1:
                 text = text[0:text.rfind(" (")]
             currentGroup = text
@@ -474,7 +481,7 @@ class chumArea(RightClickTree):
             return
         curgroups = []
         for i in range(self.topLevelItemCount()):
-            text = str(self.topLevelItem(i).text(0))
+            text = unicode(self.topLevelItem(i).text(0))
             if text.rfind(" (") != -1:
                 text = text[0:text.rfind(" (")]
             curgroups.append(text)
@@ -498,30 +505,31 @@ class chumArea(RightClickTree):
           totals = {'Chums': 0}
           online = {'Chums': 0}
           for g in self.groups:
-              totals[str(g)] = 0
-              online[str(g)] = 0
+              totals[unicode(g)] = 0
+              online[unicode(g)] = 0
           for c in self.chums:
               yes = c.mood.name() != "offline"
               if c.group == "Chums":
-                  totals[str(c.group)] = totals[str(c.group)]+1
+                  totals[unicode(c.group)] = totals[unicode(c.group)]+1
                   if yes:
-                      online[str(c.group)] = online[str(c.group)]+1
+                      online[unicode(c.group)] = online[unicode(c.group)]+1
               elif c.group in totals:
-                  totals[str(c.group)] = totals[str(c.group)]+1
+                  totals[unicode(c.group)] = totals[unicode(c.group)]+1
                   if yes:
-                      online[str(c.group)] = online[str(c.group)]+1
+                      online[unicode(c.group)] = online[unicode(c.group)]+1
               else:
                   totals["Chums"] = totals["Chums"]+1
                   if yes:
                       online["Chums"] = online["Chums"]+1
           for i in range(self.topLevelItemCount()):
-              text = str(self.topLevelItem(i).text(0))
+              text = unicode(self.topLevelItem(i).text(0))
               if text.rfind(" (") != -1:
                   text = text[0:text.rfind(" (")]
-              self.topLevelItem(i).setText(0, "%s (%i/%i)" % (text, online[text], totals[text]))
+              if text in online:
+                  self.topLevelItem(i).setText(0, "%s (%i/%i)" % (text, online[text], totals[text]))
     def hideOnlineNumbers(self):
         for i in range(self.topLevelItemCount()):
-            text = str(self.topLevelItem(i).text(0))
+            text = unicode(self.topLevelItem(i).text(0))
             if text.rfind(" (") != -1:
                 text = text[0:text.rfind(" (")]
             self.topLevelItem(i).setText(0, "%s" % (text))
@@ -537,7 +545,7 @@ class chumArea(RightClickTree):
     @QtCore.pyqtSlot()
     def expandGroup(self):
         item = self.currentItem()
-        text = str(item.text(0))
+        text = unicode(item.text(0))
         if text.rfind(" (") != -1:
             text = text[0:text.rfind(" (")]
 
@@ -552,7 +560,7 @@ class chumArea(RightClickTree):
                 self.mainwindow.config.addGroup("Chums")
             curgroups = []
             for i in range(self.topLevelItemCount()):
-                text = str(self.topLevelItem(i).text(0))
+                text = unicode(self.topLevelItem(i).text(0))
                 if text.rfind(" (") != -1:
                     text = text[0:text.rfind(" (")]
                 curgroups.append(text)
@@ -569,7 +577,7 @@ class chumArea(RightClickTree):
                     if self.openGroups[self.groups.index("%s" % (chumLabel.chum.group))]:
                         child_1.setExpanded(True)
                 for i in range(self.topLevelItemCount()):
-                    text = str(self.topLevelItem(i).text(0))
+                    text = unicode(self.topLevelItem(i).text(0))
                     if text.rfind(" (") != -1:
                         text = text[0:text.rfind(" (")]
                     if text == chumLabel.chum.group:
@@ -577,7 +585,10 @@ class chumArea(RightClickTree):
                 # Manual sorting
                 if self.mainwindow.config.sortMethod() == 2:
                     chums = self.mainwindow.config.chums()
-                    fi = chums.index(chumLabel.chum.handle)
+                    if chumLabel.chum.handle in chums:
+                        fi = chums.index(chumLabel.chum.handle)
+                    else:
+                        fi = 0
                     c = 1
 
                     # TODO: Rearrange chums list on drag-n-drop
@@ -785,7 +796,7 @@ class chumArea(RightClickTree):
                 index = self.indexOfTopLevelItem(currentGroup)
                 if index != -1:
                     expanded = currentGroup.isExpanded()
-                    text = str(currentGroup.text(0))
+                    text = unicode(currentGroup.text(0))
                     if text.rfind(" (") != -1:
                         text = text[0:text.rfind(" (")]
                     self.mainwindow.config.delGroup(text)
@@ -805,7 +816,7 @@ class chumArea(RightClickTree):
         currentGroup = self.currentItem()
         if not currentGroup:
             return
-        text = str(currentGroup.text(0))
+        text = unicode(currentGroup.text(0))
         if text.rfind(" (") != -1:
             text = text[0:text.rfind(" (")]
         self.mainwindow.config.delGroup(text)
@@ -826,7 +837,7 @@ class chumArea(RightClickTree):
     def moveToGroup(self, item):
         if not item:
             return
-        group = str(item.text())
+        group = unicode(item.text())
         chumLabel = self.currentItem()
         if not chumLabel:
             return
@@ -1215,7 +1226,7 @@ class PesterWindow(MovingWindow):
 
     @QtCore.pyqtSlot()
     def updatePC(self):
-        version.updateDownload(str(self.updatemenu.url))
+        version.updateDownload(unicode(self.updatemenu.url))
         self.updatemenu = None
     @QtCore.pyqtSlot()
     def noUpdatePC(self):
@@ -1384,16 +1395,16 @@ class PesterWindow(MovingWindow):
         self.connect(convoWindow, QtCore.SIGNAL('windowClosed(QString)'),
                      self, QtCore.SLOT('closeConvo(QString)'))
         self.convos[chum.handle] = convoWindow
-        if str(chum.handle).upper() == "NICKSERV" or \
-           str(chum.handle).upper() == "CHANSERV" or \
-           str(chum.handle).upper() == "MEMOSERV" or \
-           str(chum.handle).upper() == "OPERSERV" or \
-           str(chum.handle).upper() == "HELPSERV":
+        if unicode(chum.handle).upper() == "NICKSERV" or \
+           unicode(chum.handle).upper() == "CHANSERV" or \
+           unicode(chum.handle).upper() == "MEMOSERV" or \
+           unicode(chum.handle).upper() == "OPERSERV" or \
+           unicode(chum.handle).upper() == "HELPSERV":
             convoWindow.toggleQuirks(True)
             convoWindow.quirksOff.setChecked(True)
         else:
-            if str(chum.handle).upper() == "CALSPRITE" or \
-               str(chum.handle).upper() == "RANDOMENCOUNTER":
+            if unicode(chum.handle).upper() == "CALSPRITE" or \
+               unicode(chum.handle).upper() == "RANDOMENCOUNTER":
                 convoWindow.toggleQuirks(True)
                 convoWindow.quirksOff.setChecked(True)
             self.newConvoStarted.emit(QtCore.QString(chum.handle), initiated)
@@ -1588,7 +1599,7 @@ class PesterWindow(MovingWindow):
             self.mychumcolor.setText("")
 
         # sounds
-        if not pygame.mixer:
+        if not pygame or not pygame.mixer:
             self.alarm = NoneSound()
             self.memosound = NoneSound()
             self.namesound = NoneSound()
@@ -1686,7 +1697,7 @@ class PesterWindow(MovingWindow):
     def pesterSelectedChum(self):
         curChum = self.chumList.currentItem()
         if curChum:
-            text = str(curChum.text(0))
+            text = unicode(curChum.text(0))
             if text.rfind(" (") != -1:
                 text = text[0:text.rfind(" (")]
             if text not in self.chumList.groups and \
@@ -1860,13 +1871,14 @@ class PesterWindow(MovingWindow):
             available_groups = [g[0] for g in self.config.getGroups()]
             self.addchumdialog = AddChumDialog(available_groups, self)
             ok = self.addchumdialog.exec_()
-            handle = str(self.addchumdialog.chumBox.text()).strip()
-            newgroup = str(self.addchumdialog.newgroup.text()).strip()
+            handle = unicode(self.addchumdialog.chumBox.text()).strip()
+            newgroup = unicode(self.addchumdialog.newgroup.text()).strip()
             selectedGroup = self.addchumdialog.groupBox.currentText()
             group = newgroup if newgroup else selectedGroup
             if ok:
                 handle = unicode(handle)
                 if handle in [h.handle for h in self.chumList.chums]:
+                    self.addchumdialog = None
                     return
                 if not (PesterProfile.checkLength(handle) and
                         PesterProfile.checkValid(handle)[0]):
@@ -2365,7 +2377,7 @@ class PesterWindow(MovingWindow):
               self.config.set('blink', blinksetting)
             # toast notifications
             self.tm.setEnabled(self.optionmenu.notifycheck.isChecked())
-            self.tm.setCurrentType(str(self.optionmenu.notifyOptions.currentText()))
+            self.tm.setCurrentType(unicode(self.optionmenu.notifyOptions.currentText()))
             notifysetting = 0
             if self.optionmenu.notifySigninCheck.isChecked():
                 notifysetting |= self.config.SIGNIN
@@ -2641,7 +2653,7 @@ class MainProgram(QtCore.QObject):
 
         options = self.oppts(sys.argv[1:])
 
-        if pygame.mixer:
+        if pygame and pygame.mixer:
             # we could set the frequency higher but i love how cheesy it sounds
             try:
                 pygame.mixer.init()
