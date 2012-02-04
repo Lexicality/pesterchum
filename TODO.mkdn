@@ -19,14 +19,13 @@ Features
 * Use web connection to send offline messages in email-like fashion (Idea: ghostDunk)
 * Use web connection to save profiles (Idea: ghostDunk)
 * Better NickServ registering
-* Unified data storage, OS-based user data location
 * Spectation notices (Idea: lexicalNuance) (probly WONTFIX)
-* "Pester" menu option to just pester a handle
 * Auto-login Nickserv
 * Make toast notifications only on certain chums
 * Local alisas for chums
 * Italics/uderline - needed for canon
 * Don't make new windows be all in your face and shit
+* Hide offline friends per group
 
 Bugs
 ----
@@ -37,8 +36,11 @@ Bugs
 * Closing a timeclone doesn't actually cease for everyone else
 * Kill Zalgo
 * Random invisible, tiny links to last link at end of every message
-* if you change the capitals on a memo name when entering. Userlist goes blank.
 * Clicking link to invite-only memo crashes
+* Close when banned from memo when main PC window minimized
+* Chums not appearing on chumroll when initals are the same? (bS)
+* Recognize IRC 471, 473, 474 and 475
+* memo links aren't case sensitive
 
 Windows Bugs
 ------------
